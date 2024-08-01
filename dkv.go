@@ -11,10 +11,10 @@ package dkv
 import (
 	"bytes"
 	"encoding/gob"
-	"encoding/json"
 	"errors"
 	"io"
 	"log"
+	"maps"
 	"net"
 	"os"
 	"sync"
@@ -165,10 +165,9 @@ func (d *DKV) Del(k string) error {
 func (d *DKV) Apply(l *raft.Log) interface{} {
 	var req Command
 
-	// TODO: how to handle failure ?
 	err := gob.NewDecoder(bytes.NewReader(l.Data)).Decode(&req)
 	if err != nil {
-		log.Fatal("it's supposed to work")
+		return err
 	}
 
 	d.mu.Lock()
@@ -189,28 +188,24 @@ func (d *DKV) Apply(l *raft.Log) interface{} {
 }
 
 func (d *DKV) Snapshot() (raft.FSMSnapshot, error) {
-	// d.mu.Lock()
-	// defer d.mu.Unlock()
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	// clone := maps.Clone(d.kv)
-	// snapshot := &snapshot{kv: clone}
+	clone := maps.Clone(d.kv)
+	snapshot := &snapshot{kv: clone}
 
-	// return snapshot, nil
-	return nil, nil
+	return snapshot, nil
 }
 
 func (d *DKV) Restore(rc io.ReadCloser) error {
-	// var store map[string]string
+	var store map[string]string
 
-	// err := json.NewDecoder(rc).Decode(&store)
-	// if err != nil {
-	// 	return err
-	// }
+	err := gob.NewDecoder(rc).Decode(&store)
+	if err != nil {
+		return err
+	}
 
-	// d.mu.Lock()
-	// defer d.mu.Unlock()
-	// d.kv = store
-
+	d.kv = store
 	return nil
 }
 
@@ -219,12 +214,8 @@ type snapshot struct {
 }
 
 func (s *snapshot) Persist(sink raft.SnapshotSink) error {
-	b, err := json.Marshal(s.kv)
+	err := gob.NewEncoder(sink).Encode(&s.kv)
 	if err != nil {
-		return err
-	}
-
-	if _, err := sink.Write(b); err != nil {
 		sink.Cancel()
 		return err
 	}
