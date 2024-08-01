@@ -12,9 +12,9 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
-	"maps"
 	"net"
 	"os"
 	"sync"
@@ -24,6 +24,8 @@ import (
 )
 
 const raftTimeout = 10 * time.Second
+
+var KEY_DOES_NOT_EXIST error = errors.New("key does not exist")
 
 func init() {
 	gob.Register(&Command{})
@@ -120,12 +122,44 @@ func (d *DKV) Set(k string, v string) error {
 	return future.Error()
 }
 
-func (d *DKV) Get(k string, v string) (string, error) {
-	return "", nil
+func (d *DKV) Get(k string) (string, error) {
+	if d.raft.State() != raft.Leader {
+		addr, _ := d.raft.LeaderWithID()
+
+		return "", &NotLeaderError{LeaderAddr: string(addr)}
+	}
+
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	v, ok := d.kv[k]
+	if !ok {
+		return "", KEY_DOES_NOT_EXIST
+	}
+
+	return v, nil
 }
 
 func (d *DKV) Del(k string) error {
-	return nil
+	if d.raft.State() != raft.Leader {
+		addr, _ := d.raft.LeaderWithID()
+
+		return &NotLeaderError{LeaderAddr: string(addr)}
+	}
+
+	cmd := Command{
+		Cmd: DEL,
+		Key: k,
+	}
+
+	buf := bytes.Buffer{}
+	err := gob.NewEncoder(&buf).Encode(&cmd)
+	if err != nil {
+		return err
+	}
+
+	future := d.raft.Apply(buf.Bytes(), raftTimeout)
+	return future.Error()
 }
 
 func (d *DKV) Apply(l *raft.Log) interface{} {
@@ -143,8 +177,10 @@ func (d *DKV) Apply(l *raft.Log) interface{} {
 	switch req.Cmd {
 	case SET:
 		d.kv[req.Key] = req.Val
-	case GET:
+
 	case DEL:
+		delete(d.kv, req.Key)
+
 	default:
 		log.Fatal("not handled operation")
 	}
@@ -153,26 +189,27 @@ func (d *DKV) Apply(l *raft.Log) interface{} {
 }
 
 func (d *DKV) Snapshot() (raft.FSMSnapshot, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	// d.mu.Lock()
+	// defer d.mu.Unlock()
 
-	clone := maps.Clone(d.kv)
-	snapshot := &snapshot{kv: clone}
+	// clone := maps.Clone(d.kv)
+	// snapshot := &snapshot{kv: clone}
 
-	return snapshot, nil
+	// return snapshot, nil
+	return nil, nil
 }
 
 func (d *DKV) Restore(rc io.ReadCloser) error {
-	var store map[string]string
+	// var store map[string]string
 
-	err := json.NewDecoder(rc).Decode(&store)
-	if err != nil {
-		return err
-	}
+	// err := json.NewDecoder(rc).Decode(&store)
+	// if err != nil {
+	// 	return err
+	// }
 
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.kv = store
+	// d.mu.Lock()
+	// defer d.mu.Unlock()
+	// d.kv = store
 
 	return nil
 }

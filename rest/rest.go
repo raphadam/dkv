@@ -15,6 +15,11 @@ type CommandRequest struct {
 }
 
 type CommandResponse struct {
+	Value string `json:"val"`
+}
+
+type CommandError struct {
+	Error string `json:"error"`
 }
 
 type Rest struct {
@@ -39,22 +44,54 @@ func (rs *Rest) Handle(w http.ResponseWriter, r *http.Request) {
 
 	switch req.Cmd {
 	case "set":
-		err = rs.store.Set(req.Key, req.Val)
-		if err != nil {
-			log.Fatal(err)
-		}
-	// case "get":
-	// 	err = rs.store.Get(req.Key)
-	// case "del":
+		rs.handleSet(req, w)
+
+	case "get":
+		rs.handleGet(req, w)
+
+	case "del":
+		rs.handleDel(req, w)
 
 	default:
 		log.Fatal("not handled case")
 	}
 }
 
+func (rs *Rest) handleSet(req CommandRequest, w http.ResponseWriter) {
+	err := rs.store.Set(req.Key, req.Val)
+	if err != nil {
+		log.Fatal(err)
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (rs *Rest) handleGet(req CommandRequest, w http.ResponseWriter) {
+	res, err := rs.store.Get(req.Key)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	data, err := json.Marshal(&CommandResponse{
+		Value: res,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+func (rs *Rest) handleDel(req CommandRequest, w http.ResponseWriter) {
+	err := rs.store.Del(req.Key)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 /*
-
-
 type joinRequest struct {
 	Addr string `json:"addr"`
 	Id   string `json:"id"`
