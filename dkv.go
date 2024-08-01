@@ -9,13 +9,13 @@ package dkv
 // ecnrypted file storage
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"maps"
 	"net"
-	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -25,32 +25,32 @@ import (
 
 const raftTimeout = 10 * time.Second
 
-type joinRequest struct {
-	Addr string `json:"addr"`
-	Id   string `json:"id"`
+func init() {
+	gob.Register(&Command{})
 }
 
-type joinResponse struct {
+type CommandType int
+
+const (
+	SET CommandType = iota
+	GET
+	DEL
+)
+
+type Command struct {
+	Cmd CommandType
+	Key string
+	Val string
 }
 
-type CommandRequest struct {
-	Cmd string `json:"cmd"`
-	Key string `json:"key"`
-	Val string `json:"val"`
-}
-
-type CommandResponse struct {
-}
-
-type node struct {
+type DKV struct {
 	kv   map[string]string
 	mu   sync.RWMutex
 	raft *raft.Raft
-	// log slog.Logger
 }
 
-func Serve(single bool, httpAddr string, raftAddr string) error {
-	n := &node{
+func New(single bool, raftAddr string) (*DKV, error) {
+	d := &DKV{
 		kv: make(map[string]string),
 	}
 
@@ -59,7 +59,7 @@ func Serve(single bool, httpAddr string, raftAddr string) error {
 
 	addr, err := net.ResolveTCPAddr("tcp", raftAddr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	logStore := raft.NewInmemStore()
@@ -68,17 +68,17 @@ func Serve(single bool, httpAddr string, raftAddr string) error {
 
 	transport, err := raft.NewTCPTransport(raftAddr, addr, 3, 10*time.Second, os.Stderr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	r, err := raft.NewRaft(config, n, logStore, stableStore, snapshot, transport)
+	r, err := raft.NewRaft(config, d, logStore, stableStore, snapshot, transport)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	n.raft = r
+	d.raft = r
 
 	if single {
-		n.raft.BootstrapCluster(raft.Configuration{Servers: []raft.Server{
+		d.raft.BootstrapCluster(raft.Configuration{Servers: []raft.Server{
 			{
 				ID:      config.LocalID,
 				Address: transport.LocalAddr(),
@@ -86,38 +86,83 @@ func Serve(single bool, httpAddr string, raftAddr string) error {
 		}})
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /", n.HttpCommand)
-	mux.HandleFunc("POST /join", n.HttpJoin)
-	return http.ListenAndServe(httpAddr, mux)
+	return d, nil
 }
 
-func (n *node) Apply(l *raft.Log) interface{} {
-	var req CommandRequest
+type NotLeaderError struct {
+	LeaderAddr string
+}
 
-	err := json.Unmarshal(l.Data, &req)
+func (e *NotLeaderError) Error() string {
+	return "not leader"
+}
+
+func (d *DKV) Set(k string, v string) error {
+	if d.raft.State() != raft.Leader {
+		addr, _ := d.raft.LeaderWithID()
+
+		return &NotLeaderError{LeaderAddr: string(addr)}
+	}
+
+	cmd := Command{
+		Cmd: SET,
+		Key: k,
+		Val: v,
+	}
+
+	buf := bytes.Buffer{}
+	err := gob.NewEncoder(&buf).Encode(&cmd)
+	if err != nil {
+		return err
+	}
+
+	future := d.raft.Apply(buf.Bytes(), raftTimeout)
+	return future.Error()
+}
+
+func (d *DKV) Get(k string, v string) (string, error) {
+	return "", nil
+}
+
+func (d *DKV) Del(k string) error {
+	return nil
+}
+
+func (d *DKV) Apply(l *raft.Log) interface{} {
+	var req Command
+
+	// TODO: how to handle failure ?
+	err := gob.NewDecoder(bytes.NewReader(l.Data)).Decode(&req)
 	if err != nil {
 		log.Fatal("it's supposed to work")
 	}
 
-	n.mu.Lock()
-	defer n.mu.Unlock()
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	n.kv[req.Key] = req.Val
+	switch req.Cmd {
+	case SET:
+		d.kv[req.Key] = req.Val
+	case GET:
+	case DEL:
+	default:
+		log.Fatal("not handled operation")
+	}
+
 	return nil
 }
 
-func (n *node) Snapshot() (raft.FSMSnapshot, error) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
+func (d *DKV) Snapshot() (raft.FSMSnapshot, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	clone := maps.Clone(n.kv)
+	clone := maps.Clone(d.kv)
 	snapshot := &snapshot{kv: clone}
 
 	return snapshot, nil
 }
 
-func (n *node) Restore(rc io.ReadCloser) error {
+func (d *DKV) Restore(rc io.ReadCloser) error {
 	var store map[string]string
 
 	err := json.NewDecoder(rc).Decode(&store)
@@ -125,9 +170,9 @@ func (n *node) Restore(rc io.ReadCloser) error {
 		return err
 	}
 
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.kv = store
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.kv = store
 
 	return nil
 }
@@ -152,96 +197,3 @@ func (s *snapshot) Persist(sink raft.SnapshotSink) error {
 
 func (s *snapshot) Release() {
 }
-
-func (n *node) Set(key string, val string) error {
-	if n.raft.State() != raft.Leader {
-		log.Println("not the leader")
-		return fmt.Errorf("not the leader")
-	}
-	log.Println("i am the leader")
-
-	// addr, id := n.raft.LeaderWithID()
-	// log.Println(addr, id)
-	// raft.Leader
-
-	// n.raft.State()
-
-	// n.raft.Apply()
-	return nil
-}
-
-func (n *node) HttpCommand(w http.ResponseWriter, r *http.Request) {
-	cmd := CommandRequest{}
-
-	err := json.NewDecoder(r.Body).Decode(&cmd)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	log.Println(cmd)
-
-	switch cmd.Cmd {
-	case "set":
-		n.Set(cmd.Key, cmd.Val)
-	case "get":
-		log.Println("get")
-	case "del":
-		log.Println("del")
-	}
-}
-
-func (n *node) HttpJoin(w http.ResponseWriter, r *http.Request) {
-	req := joinRequest{}
-
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	log.Println(req)
-	// log.Println(cmd)
-
-	// switch cmd.Cmd {
-	// case "set":
-	// 	n.Set(cmd.Key, cmd.Val)
-	// case "get":
-	// 	log.Println("get")
-	// case "del":
-	// 	log.Println("del")
-	// }
-}
-
-// data, err := io.ReadAll(r.Body)
-// if err != nil {
-// 	w.WriteHeader(http.StatusBadRequest)
-// 	return
-// }
-
-// future := n.consensun.Apply(data, 5*time.Second)
-// if future.Error() != nil {
-// 	w.WriteHeader(http.StatusnodeUnavailable)
-// }
-
-// w.WriteHeader(http.StatusOK)
-// w.Write([]byte("it is working great set"))
-
-// func (n *node) get(w http.ResponseWriter, r *http.Request) {
-// 	w.WriteHeader(http.StatusOK)
-// 	w.Write([]byte("it is working great get"))
-// }
-
-// func Serve(addr string) error {
-// 	mux := http.NewServeMux()
-
-// 	s := node{
-// 		kv: make(map[string]string),
-// 		// consensus: raft.NewRaft(raft.DefaultConfig()),
-// 	}
-
-// 	mux.HandleFunc("POST /set", n.set)
-// 	mux.HandleFunc("GET /get", n.get)
-
-//		return http.ListenAndServe(addr, mux)
-//	}

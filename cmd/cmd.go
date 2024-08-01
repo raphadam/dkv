@@ -2,6 +2,10 @@ package main
 
 import (
 	"flag"
+	"log"
+
+	"github.com/raphadam/dkv"
+	"github.com/raphadam/dkv/rest"
 )
 
 var joinAddr string
@@ -13,7 +17,12 @@ func init() {
 func main() {
 	flag.Parse()
 
-	// dkv.Serve(joinAddr == "", )
+	store, err := dkv.New(true, "localhost:50001")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Fatal(rest.Serve(":40001", store))
 }
 
 // func main() {
