@@ -1,17 +1,10 @@
 package dkv
 
-// create load balancer
-// create gateway
-// sharding
-// encrypted password manager cli
-// a tool to easly check the hash of programs
-// promotheus
-// ecnrypted file storage
-
 import (
 	"bytes"
 	"encoding/gob"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"maps"
@@ -123,11 +116,12 @@ func (d *DKV) Set(k string, v string) error {
 }
 
 func (d *DKV) Get(k string) (string, error) {
-	if d.raft.State() != raft.Leader {
-		addr, _ := d.raft.LeaderWithID()
+	// TODO: eventual consistency?
+	// if d.raft.State() != raft.Leader {
+	// 	addr, _ := d.raft.LeaderWithID()
 
-		return "", &NotLeaderError{LeaderAddr: string(addr)}
-	}
+	// 	return "", &NotLeaderError{LeaderAddr: string(addr)}
+	// }
 
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -160,6 +154,36 @@ func (d *DKV) Del(k string) error {
 
 	future := d.raft.Apply(buf.Bytes(), raftTimeout)
 	return future.Error()
+}
+
+func (d *DKV) Join(nodeId string, addr string) error {
+	futureConfig := d.raft.GetConfiguration()
+	if err := futureConfig.Error(); err != nil {
+		log.Println("unable to  get config")
+		return err
+	}
+
+	config := futureConfig.Configuration()
+	for _, server := range config.Servers {
+		if server.ID == raft.ServerID(nodeId) || server.Address == raft.ServerAddress(addr) {
+
+			if server.ID == raft.ServerID(nodeId) && server.Address == raft.ServerAddress(addr) {
+				return nil
+			}
+
+			future := d.raft.RemoveServer(server.ID, 0, 0)
+			if err := future.Error(); err != nil {
+				return fmt.Errorf("error %s %s", nodeId, err)
+			}
+		}
+	}
+
+	future := d.raft.AddVoter(raft.ServerID(nodeId), raft.ServerAddress(addr), 0, 0)
+	if err := future.Error(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (d *DKV) Apply(l *raft.Log) interface{} {
