@@ -20,34 +20,61 @@ func init() {
 }
 
 func main() {
-	flag.Parse()
+	log.Println("new program")
 
-	go func() {
-		store, err := dkv.New(true, "127.0.0.1:50001")
-		if err != nil {
-			log.Fatal(err)
-		}
+	node1, err := dkv.NewNode("127.0.0.1:60001", map[string]string{}, []string{"127.0.0.1:60005", "127.0.0.1:60006", "127.0.0.1:60007"})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer node1.Leave()
 
-		log.Fatal(rest.Serve("127.0.0.1:40001", store))
-	}()
+	node2, err := dkv.NewNode("127.0.0.1:60002", map[string]string{}, []string{"127.0.0.1:60001"})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer node2.Leave()
 
-	time.Sleep(3 * time.Second)
+	node3, err := dkv.NewNode("127.0.0.1:60003", map[string]string{}, []string{"127.0.0.1:60002"})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer node3.Leave()
 
-	go func() {
-		store, err := dkv.New(false, "127.0.0.1:50002")
-		if err != nil {
-			log.Fatal(err)
-		}
+	node4, err := dkv.NewNode("127.0.0.1:60004", map[string]string{}, []string{"127.0.0.1:60001"})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer node4.Leave()
 
-		err = AskJoin("127.0.0.1:50002", "127.0.0.1:40001")
-		if err != nil {
-			log.Fatal(err)
-		}
+	time.Sleep(time.Second * 5)
 
-		log.Fatal(rest.Serve(":40002", store))
-	}()
+	// flag.Parse()
+	// go func() {
+	// 	store, err := dkv.New(true, "127.0.0.1:50001")
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
 
-	log.Println("TAHT")
+	// 	log.Fatal(rest.Serve("127.0.0.1:40001", store))
+	// }()
+
+	// time.Sleep(3 * time.Second)
+
+	// go func() {
+	// 	store, err := dkv.New(false, "127.0.0.1:50002")
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+
+	// 	err = AskJoin("127.0.0.1:50002", "127.0.0.1:40001")
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+
+	// 	log.Fatal(rest.Serve(":40002", store))
+	// }()
+
+	// log.Println("TAHT")
 
 	select {}
 }
