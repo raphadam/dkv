@@ -18,7 +18,7 @@ import (
 
 const raftTimeout = 10 * time.Second
 
-var KEY_DOES_NOT_EXIST error = errors.New("key does not exist")
+var ErrKeyDoesNotExist = errors.New("key does not exist")
 
 func init() {
 	gob.Register(&Command{})
@@ -95,7 +95,6 @@ func (e *NotLeaderError) Error() string {
 func (d *DKV) Set(k string, v string) error {
 	if d.raft.State() != raft.Leader {
 		addr, _ := d.raft.LeaderWithID()
-
 		return &NotLeaderError{LeaderAddr: string(addr)}
 	}
 
@@ -128,7 +127,7 @@ func (d *DKV) Get(k string) (string, error) {
 
 	v, ok := d.kv[k]
 	if !ok {
-		return "", KEY_DOES_NOT_EXIST
+		return "", ErrKeyDoesNotExist
 	}
 
 	return v, nil
@@ -157,6 +156,11 @@ func (d *DKV) Del(k string) error {
 }
 
 func (d *DKV) Join(raftAddr string) error {
+	if d.raft.State() != raft.Leader {
+		addr, _ := d.raft.LeaderWithID()
+		return &NotLeaderError{LeaderAddr: string(addr)}
+	}
+
 	futureConfig := d.raft.GetConfiguration()
 	if err := futureConfig.Error(); err != nil {
 		log.Println("unable to  get config")

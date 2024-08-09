@@ -10,15 +10,6 @@ import (
 	"github.com/hashicorp/serf/serf"
 )
 
-// type JoinRequest struct {
-// 	nodeID string `json:"nodeID"`
-// 	Addr   string `json:"addr"`
-// }
-
-// type JoinResponse struct {
-// 	Error string `json:"error"`
-// }
-
 type CommandRequest struct {
 	Cmd string `json:"cmd"`
 	Key string `json:"key"`
@@ -55,7 +46,11 @@ func Serve(single bool, restAddr string, serfAddr string, raftAddr string, boots
 	config.MemberlistConfig.BindAddr = addr.IP.String()
 	config.MemberlistConfig.BindPort = addr.Port
 	config.EventCh = eventCh
-	// config.Tags = tags
+	config.Tags = map[string]string{
+		"serfAddr": serfAddr,
+		"raftAddr": raftAddr,
+		"restAddr": restAddr,
+	}
 	config.NodeName = serfAddr
 
 	serf, err := serf.Create(config)
@@ -101,9 +96,8 @@ func (n *node) handleEvent() {
 					continue
 				}
 
-				log.Println("someont is joinding")
-
-				// n.store.Join(member.Name, member.Name)
+				raftAddr := member.Tags["raftAddr"]
+				n.store.Join(raftAddr)
 			}
 		case serf.EventMemberLeave, serf.EventMemberFailed:
 			for _, member := range e.(serf.MemberEvent).Members {
@@ -166,7 +160,7 @@ func (n *node) handleGet(req CommandRequest, w http.ResponseWriter) {
 			return
 		}
 
-		if errors.Is(err, KEY_DOES_NOT_EXIST) {
+		if errors.Is(err, ErrKeyDoesNotExist) {
 			log.Println("does not exist")
 			return
 		}
@@ -193,17 +187,3 @@ func (n *node) handleDel(req CommandRequest, w http.ResponseWriter) {
 
 	w.WriteHeader(http.StatusOK)
 }
-
-// func (n *node) HandleJoin(w http.ResponseWriter, r *http.Request) {
-// 	req := JoinRequest{}
-
-// 	err := json.NewDecoder(r.Body).Decode(&req)
-// 	if err != nil {
-// 		log.Fatal("unable to decode request")
-// 	}
-
-// 	err = n.store.Join(req.nodeID, req.Addr)
-// 	if err != nil {
-// 		log.Fatal("unable to decode request")
-// 	}
-// }

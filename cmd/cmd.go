@@ -32,85 +32,45 @@ func main() {
 			log.Fatal(err)
 		}
 	}()
+	time.Sleep(2 * time.Second)
 
-	log.Println("TAHT")
+	go func() {
+		err := dkv.Serve(false, "127.0.0.1:30003", "127.0.0.1:40003", "127.0.0.1:50003", []string{
+			"127.0.0.1:40001",
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+	time.Sleep(2 * time.Second)
+
+	go func() {
+		err := dkv.Serve(false, "127.0.0.1:30004", "127.0.0.1:40004", "127.0.0.1:50004", []string{
+			"127.0.0.1:40003",
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+	time.Sleep(2 * time.Second)
+
+	go func() {
+		err := dkv.Serve(false, "127.0.0.1:30005", "127.0.0.1:40005", "127.0.0.1:50005", []string{
+			"127.0.0.1:40002",
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+	time.Sleep(2 * time.Second)
+
+	go func() {
+		err := dkv.Serve(false, "127.0.0.1:30006", "127.0.0.1:40006", "127.0.0.1:50006", []string{
+			"127.0.0.1:40005",
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
 	time.Sleep(1 * time.Hour)
 }
-
-// err = AskJoin("127.0.0.1:50002", "127.0.0.1:40001")
-// if err != nil {
-// 	log.Fatal(err)
-// }
-
-// log.Fatal(rest.Serve(":40002", store))
-
-// func AskJoin(me string, httpOther string) error {
-// 	// req := rest.JoinRequest{
-// 	// 	NodeID: me,
-// 	// 	Addr:   me,
-// 	// }
-
-// 	// b, err := json.Marshal(req)
-// 	// if err != nil {
-// 	// 	return err
-// 	// }
-// 	// resp, err := http.Post(fmt.Sprintf("http://%s/join", httpOther), "application-type/json", bytes.NewReader(b))
-// 	// if err != nil {
-// 	// 	return err
-// 	// }
-// 	// resp.Body.Close()
-// 	return nil
-// }
-
-// func main() {
-// 	config := raft.DefaultConfig()
-
-// 	raft.ServerID
-
-// 	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:12345")
-// 	if err != nil {
-// 		log.Fatal("unable to resolve tcp addr")
-// 	}
-
-// 	transport, err := raft.NewTCPTransport("127.0.0.1:12345", addr, 3, 5*time.Second, os.Stderr)
-// 	if err != nil {
-// 		log.Fatal("unable to create transport", err)
-// 	}
-
-// 	kv := dkv.New()
-
-// 	log.Printf("config local id %#v", config)
-
-// 	node, err := raft.NewRaft(
-// 		config,
-// 		kv,
-// 		raft.NewInmemStore(),
-// 		raft.NewInmemStore(),
-// 		raft.NewDiscardSnapshotStore(),
-// 		transport,
-// 	)
-// 	if err != nil {
-// 		log.Fatal("unable to create node", err)
-// 	}
-
-// 	node.BootstrapCluster(raft.Configuration{
-// 		Servers: []raft.Server{
-// 			{
-// 				ID:      config.LocalID,
-// 				Address: transport.LocalAddr(),
-// 			},
-// 		},
-// 	})
-
-// 	data, err := json.Marshal(&dkv.Command{Key: "mynameis", Val: "slimshady"})
-// 	if err != nil {
-// 		log.Fatal("unable to marshal command", err)
-// 	}
-
-// 	future := node.Apply(data, 5*time.Second)
-// 	if err := future.Error(); err != nil {
-// 		log.Fatal("error trying to apply", err)
-// 	}
-
-// 	log.Printf("Set command applied, current state: %v", kv)
-// }
