@@ -44,7 +44,7 @@ type DKV struct {
 	raft *raft.Raft
 }
 
-func New(single bool, raftAddr string) (*DKV, error) {
+func newDKV(single bool, raftAddr string) (*DKV, error) {
 	d := &DKV{
 		kv: make(map[string]string),
 	}
@@ -156,7 +156,7 @@ func (d *DKV) Del(k string) error {
 	return future.Error()
 }
 
-func (d *DKV) Join(nodeId string, addr string) error {
+func (d *DKV) Join(raftAddr string) error {
 	futureConfig := d.raft.GetConfiguration()
 	if err := futureConfig.Error(); err != nil {
 		log.Println("unable to  get config")
@@ -165,20 +165,20 @@ func (d *DKV) Join(nodeId string, addr string) error {
 
 	config := futureConfig.Configuration()
 	for _, server := range config.Servers {
-		if server.ID == raft.ServerID(nodeId) || server.Address == raft.ServerAddress(addr) {
+		if server.ID == raft.ServerID(raftAddr) || server.Address == raft.ServerAddress(raftAddr) {
 
-			if server.ID == raft.ServerID(nodeId) && server.Address == raft.ServerAddress(addr) {
+			if server.ID == raft.ServerID(raftAddr) && server.Address == raft.ServerAddress(raftAddr) {
 				return nil
 			}
 
 			future := d.raft.RemoveServer(server.ID, 0, 0)
 			if err := future.Error(); err != nil {
-				return fmt.Errorf("error %s %s", nodeId, err)
+				return fmt.Errorf("error %s %s", raftAddr, err)
 			}
 		}
 	}
 
-	future := d.raft.AddVoter(raft.ServerID(nodeId), raft.ServerAddress(addr), 0, 0)
+	future := d.raft.AddVoter(raft.ServerID(raftAddr), raft.ServerAddress(raftAddr), 0, 0)
 	if err := future.Error(); err != nil {
 		return err
 	}

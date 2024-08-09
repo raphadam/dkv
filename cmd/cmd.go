@@ -1,16 +1,11 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"flag"
-	"fmt"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/raphadam/dkv"
-	"github.com/raphadam/dkv/rest"
 )
 
 var joinAddr string
@@ -20,82 +15,52 @@ func init() {
 }
 
 func main() {
-	log.Println("new program")
-
-	node1, err := dkv.NewNode("127.0.0.1:60001", map[string]string{}, []string{"127.0.0.1:60005", "127.0.0.1:60006", "127.0.0.1:60007"})
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer node1.Leave()
-
-	node2, err := dkv.NewNode("127.0.0.1:60002", map[string]string{}, []string{"127.0.0.1:60001"})
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer node2.Leave()
-
-	node3, err := dkv.NewNode("127.0.0.1:60003", map[string]string{}, []string{"127.0.0.1:60002"})
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer node3.Leave()
-
-	node4, err := dkv.NewNode("127.0.0.1:60004", map[string]string{}, []string{"127.0.0.1:60001"})
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer node4.Leave()
-
-	time.Sleep(time.Second * 5)
-
 	// flag.Parse()
-	// go func() {
-	// 	store, err := dkv.New(true, "127.0.0.1:50001")
-	// 	if err != nil {
-	// 		log.Fatal(err)
-	// 	}
+	go func() {
+		err := dkv.Serve(true, "127.0.0.1:30001", "127.0.0.1:40001", "127.0.0.1:50001", []string{})
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+	time.Sleep(2 * time.Second)
 
-	// 	log.Fatal(rest.Serve("127.0.0.1:40001", store))
-	// }()
+	go func() {
+		err := dkv.Serve(false, "127.0.0.1:30002", "127.0.0.1:40002", "127.0.0.1:50002", []string{
+			"127.0.0.1:40001",
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
 
-	// time.Sleep(3 * time.Second)
-
-	// go func() {
-	// 	store, err := dkv.New(false, "127.0.0.1:50002")
-	// 	if err != nil {
-	// 		log.Fatal(err)
-	// 	}
-
-	// 	err = AskJoin("127.0.0.1:50002", "127.0.0.1:40001")
-	// 	if err != nil {
-	// 		log.Fatal(err)
-	// 	}
-
-	// 	log.Fatal(rest.Serve(":40002", store))
-	// }()
-
-	// log.Println("TAHT")
-
-	select {}
+	log.Println("TAHT")
+	time.Sleep(1 * time.Hour)
 }
 
-func AskJoin(me string, httpOther string) error {
-	req := rest.JoinRequest{
-		NodeID: me,
-		Addr:   me,
-	}
+// err = AskJoin("127.0.0.1:50002", "127.0.0.1:40001")
+// if err != nil {
+// 	log.Fatal(err)
+// }
 
-	b, err := json.Marshal(req)
-	if err != nil {
-		return err
-	}
-	resp, err := http.Post(fmt.Sprintf("http://%s/join", httpOther), "application-type/json", bytes.NewReader(b))
-	if err != nil {
-		return err
-	}
-	resp.Body.Close()
-	return nil
-}
+// log.Fatal(rest.Serve(":40002", store))
+
+// func AskJoin(me string, httpOther string) error {
+// 	// req := rest.JoinRequest{
+// 	// 	NodeID: me,
+// 	// 	Addr:   me,
+// 	// }
+
+// 	// b, err := json.Marshal(req)
+// 	// if err != nil {
+// 	// 	return err
+// 	// }
+// 	// resp, err := http.Post(fmt.Sprintf("http://%s/join", httpOther), "application-type/json", bytes.NewReader(b))
+// 	// if err != nil {
+// 	// 	return err
+// 	// }
+// 	// resp.Body.Close()
+// 	return nil
+// }
 
 // func main() {
 // 	config := raft.DefaultConfig()
